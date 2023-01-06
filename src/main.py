@@ -85,14 +85,14 @@ def train_step(model, optim, ft_train_loader, scaler, device):
             # loss
             state_loss = F.binary_cross_entropy_with_logits(state, target1)
             reg_loss = F.mse_loss(reg, target2)
-            loss = state_loss + reg_loss
+            loss = state_loss #+ reg_loss
 
         optim.zero_grad()
         scaler.scale(loss).backward()
         scaler.step(optim)
         scaler.update()
 
-        pred = torch.where(state >= .5, 1, 0)
+        pred = torch.where(state >= 0, 1., 0.)
         num_correct = (pred == target1).sum()
         acc_meter.update(num_correct, batch_size)
 
@@ -118,7 +118,7 @@ def val_step(model, ft_test_loader, device):
         reg_loss = F.mse_loss(reg, target2)
         loss = state_loss + reg_loss
 
-        pred = torch.where(state >= .5, 1, 0)
+        pred = torch.where(state >= 0, 1., 0.)
         num_correct = (pred == target1).sum()
         acc_meter.update(num_correct, batch_size)
         loss_avg.update(loss.item(), 1)

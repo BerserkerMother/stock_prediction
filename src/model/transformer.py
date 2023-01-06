@@ -6,7 +6,6 @@ import torch.nn.functional as F
 
 
 class Transformer(nn.Module):
-
     def __init__(self, num_heads: int = 8, d_model: int = 512,
                  num_layers: int = 4, dropout: float = 0.2):
         super(Transformer, self).__init__()
@@ -70,7 +69,7 @@ class EncoderBlock(nn.Module):
         self.dropout2 = nn.Dropout(p=drop_rate)
 
     def forward(self, x: Tensor):
-        x1, attn = self.sa(x, x)
+        x1 = self.sa(x, x)
         x = self.norm1(self.dropout1(x1) + x)  # residual
 
         x1 = self.mlp(x)
@@ -104,7 +103,6 @@ class MultiAttentionNetwork(nn.Module):
         """
         :param x: query seq (batch_size, N, d_model)
         :param y: key, value seq
-        :param mask: attention mask
         :return:
         """
         batch_size, N, _ = x.size()
@@ -124,7 +122,7 @@ class MultiAttentionNetwork(nn.Module):
             permute(0, 2, 1, 3).contiguous().view(batch_size, N, -1)
 
         attention_output = self.feature_projection(attention_output)
-        return attention_output, attention_weight.detach().cpu()
+        return attention_output
 
 
 class MLP(nn.Module):
@@ -154,10 +152,36 @@ class Embedding(nn.Module):
         self.d_model = d_model
 
         # model layers
+        self.close_transform = nn.Linear(in_features, d_model)
         self.feature_transform = nn.Linear(in_features, d_model)
+        self.pos_embedding = PositionalEncoding(d_model, dropout=0.2)
 
     def forward(self, x: Tensor):
         batch_size = x.size()[0]
 
-        x = self.feature_transform(x)
+        ft = self.feature_transform(x[:, 1:])
+        close = self.close_transform(x[:, 0]).unsqueeze(1)
+        x = torch.cat([close, ft], dim=1)
+        x = self.pos_embedding(x)
         return x
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self,
+                 emb_size: int,
+                 dropout: float,
+                 maxlen: int = 2500):
+        super(PositionalEncoding, self).__init__()
+        angle = torch.exp(- torch.arange(0, emb_size, 2)
+                          * math.log(10000) / emb_size)
+        pos = torch.arange(0, maxlen).reshape(maxlen, 1)
+        pos_embedding = torch.zeros((maxlen, emb_size))
+        pos_embedding[:, 0::2] = torch.sin(pos * angle)
+        pos_embedding[:, 1::2] = torch.cos(pos * angle)
+        pos_embedding = pos_embedding.unsqueeze(0)
+        self.dropout = nn.Dropout(dropout)
+        self.register_buffer('pos_embedding', pos_embedding)
+
+    def forward(self, token_embedding: Tensor):
+        return self.dropout(token_embedding
+                            + self.pos_embedding[:, :token_embedding.size()[1]])
